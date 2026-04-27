@@ -5,13 +5,15 @@ const form = document.getElementById('faculty-form');
 const formTitle = document.getElementById('form-title');
 const submitBtn = document.getElementById('submit-btn');
 const cancelBtn = document.getElementById('cancel-btn');
-const facultyIdInput = document.getElementById('faculty-id');
+const facultyIdInput = document.getElementById('faculty-id'); // Hidden MongoDB _id
 const nameInput = document.getElementById('name');
 const addressInput = document.getElementById('address');
 const departmentInput = document.getElementById('department');
 const coursesSelect = document.getElementById('courses');
 const tbody = document.getElementById('faculty-tbody');
 const noFacultyMsg = document.getElementById('no-faculty');
+const searchInput = document.getElementById('search-input');
+let allFaculties = [];
 
 let isEditing = false;
 let allCourses = [];
@@ -60,11 +62,31 @@ function getSelectedCourses() {
 async function fetchFaculties() {
     try {
         const response = await fetch(API_URL);
-        const faculties = await response.json();
-        renderFaculties(faculties);
+        allFaculties = await response.json(); // Store in our global array
+        renderFaculties(allFaculties);         // Initial render
     } catch (error) {
         console.error('Error fetching faculty:', error);
     }
+}
+if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+        const searchTerm = e.target.value.toLowerCase();
+        
+        const filtered = allFaculties.filter(faculty => {
+            const nameMatch = faculty.name && faculty.name.toLowerCase().includes(searchTerm);
+            const deptMatch = faculty.department && faculty.department.toLowerCase().includes(searchTerm);
+            
+            // Check if any taught courses match
+            const courseMatch = faculty.courses && faculty.courses.some(c => 
+                (c.courseCode && c.courseCode.toLowerCase().includes(searchTerm)) || 
+                (c.courseName && c.courseName.toLowerCase().includes(searchTerm))
+            );
+            
+            return nameMatch || deptMatch || courseMatch;
+        });
+        
+        renderFaculties(filtered);
+    });
 }
 
 function renderFaculties(faculties) {
@@ -79,14 +101,17 @@ function renderFaculties(faculties) {
 
     faculties.forEach(faculty => {
         const row = document.createElement('tr');
-        const courseNames = faculty.courses && faculty.courses.length > 0
-            ? faculty.courses.map(c => escapeHtml(`${c.courseCode} - ${c.courseName}`)).join(', ')
-            : '-';
+        
+        // Transform the courses into HTML Badges!
+        const courseBadges = faculty.courses && faculty.courses.length > 0
+            ? faculty.courses.map(c => `<span class="badge">${escapeHtml(c.courseCode)}</span>`).join('')
+            : '<span style="color: #999; font-size: 0.9em;">None</span>';
+            
         row.innerHTML = `
-            <td>${escapeHtml(faculty.name)}</td>
+            <td><strong>${escapeHtml(faculty.name)}</strong></td>
             <td>${escapeHtml(faculty.address)}</td>
             <td>${escapeHtml(faculty.department)}</td>
-            <td>${courseNames}</td>
+            <td>${courseBadges}</td>
             <td>
                 <button class="btn-edit" onclick="editFaculty('${faculty._id}')" title="Edit">
                     <i class="fas fa-edit"></i>
@@ -101,6 +126,7 @@ function renderFaculties(faculties) {
 }
 
 function escapeHtml(text) {
+    if (!text) return '';
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
@@ -148,6 +174,7 @@ async function editFaculty(id) {
         addressInput.value = faculty.address;
         departmentInput.value = faculty.department;
 
+        // Extract IDs from populated course objects
         const courseIds = faculty.courses ? faculty.courses.map(c => c._id) : [];
         populateCourseSelect(courseIds);
 

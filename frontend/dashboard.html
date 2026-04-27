@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Management Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <aside class="sidebar">
+        <ul class="sidebar-nav">
+            <li><a href="dashboard.html" class="active"></i> Dashboard</a></li>
+            <li><a href="index.html"><i class="fas fa-user-graduate"></i> Students</a></li>
+            <li><a href="faculty.html"><i class="fas fa-chalkboard-teacher"></i> Faculty</a></li>
+            <li><a href="course.html"><i class="fas fa-book"></i> Courses</a></li>
+        </ul>
+    </aside>
+
+    <main class="main-content">
+        <div class="container">
+            <h1>Data Analysis Dashboard</h1>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3><i class="fas fa-user-graduate" style="color: #800000;"></i> Total Students</h3>
+                    <div id="count-students" class="number">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3><i class="fas fa-chalkboard-teacher" style="color: #800000;"></i> Total Faculty</h3>
+                    <div id="count-faculty" class="number">0</div>
+                </div>
+                <div class="stat-card">
+                    <h3><i class="fas fa-book" style="color: #800000;"></i> Total Courses</h3>
+                    <div id="count-courses" class="number">0</div>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <h2>Top 5 Enrolled Courses (Popularity Analysis)</h2>
+                <table id="top-courses-table">
+                    <thead>
+                        <tr>
+                            <th>Course Name</th>
+                            <th>Enrollment Count</th>
+                        </tr>
+                    </thead>
+                    <tbody id="top-courses-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+    <script src="js/dashboard.js"></script>
+</body>
+</html>

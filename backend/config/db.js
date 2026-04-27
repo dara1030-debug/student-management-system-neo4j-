@@ -1,22 +1,26 @@
-const neo4j = require('neo4j-driver');
+const { MongoClient } = require('mongodb');
+require('dotenv').config();
 
-let driver;
+const uri = process.env.MONGODB_URI;
+const dbName = process.env.MONGODB_DB_NAME;
+
+const client = new MongoClient(uri);
+let dbConnection;
 
 const connectDB = async () => {
     try {
-        driver = neo4j.driver(
-            process.env.NEO4J_URI,
-            neo4j.auth.basic(process.env.NEO4J_USER, process.env.NEO4J_PASSWORD)
-        );
-        const serverInfo = await driver.getServerInfo();
-        console.log(`Neo4j Connected: ${serverInfo.address}`);
+        await client.connect();
+        dbConnection = client.db(dbName);
+        console.log('MongoDB Connected Successfully');
     } catch (error) {
-        console.error(`Error: ${error.message}`);
+        console.error('MongoDB Connection Error:', error);
         process.exit(1);
     }
 };
 
-const getDriver = () => driver;
-const getSession = () => driver.session({ database: process.env.NEO4J_DATABASE || 'neo4j' });
+const getDB = () => {
+    if (!dbConnection) throw new Error('Call connectDB first in your server.js');
+    return dbConnection;
+};
 
-module.exports = { connectDB, getDriver, getSession };
+module.exports = { connectDB, getDB, client };

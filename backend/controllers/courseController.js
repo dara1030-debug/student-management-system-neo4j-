@@ -1,173 +1,150 @@
-const { getDriver } = require('../config/db');
-const { v4: uuidv4 } = require('uuid');
+const { getDB } = require('../config/db');
+const { ObjectId } = require('mongodb');
 
-// Helper to format course node with enrolled students and teaching faculty
-const formatCourse = (record) => {
-    const node = record.get('c').properties;
-    const students = record.has('students') ? record.get('students') : [];
-    const faculty = record.has('faculty') ? record.get('faculty') : [];
-    return {
-        _id: node.id,
-        courseCode: node.courseCode,
-        courseName: node.courseName,
-        description: node.description,
-        credits: node.credits != null ? (typeof node.credits.toNumber === 'function' ? node.credits.toNumber() : node.credits) : null,
-        students: students
-            .filter(s => s != null)
-            .map(s => ({
-                _id: s.properties.id,
-                studentId: s.properties.studentId,
-                name: s.properties.name,
-                email: s.properties.email
-            })),
-        faculty: faculty
-            .filter(f => f != null)
-            .map(f => ({
-                _id: f.properties.id,
-                name: f.properties.name,
-                department: f.properties.department
-            })),
-        createdAt: node.createdAt,
-        updatedAt: node.updatedAt
-    };
-};
-
-// Get all courses
+// Get all courses (Now with Aggregation Lookups!)
 const getCourses = async (req, res) => {
-    const session = getDriver().session();
     try {
-        const result = await session.run(
-            `MATCH (c:Course)
-             OPTIONAL MATCH (s:Student)-[:ENROLLED_IN]->(c)
-             OPTIONAL MATCH (f:Faculty)-[:TEACHES]->(c)
-             WITH c, collect(DISTINCT s) AS students, collect(DISTINCT f) AS faculty
-             RETURN c, students, faculty
-             ORDER BY c.createdAt DESC`
-        );
-        const courses = result.records.map(formatCourse);
+        const db = getDB();
+        
+        // 1. FILTER REQUIREMENT: Create an empty query object
+        let matchQuery = {};
+        
+        // If the URL has "?credits=3", add it to our filter!
+        if (req.query.credits) {
+            matchQuery.credits = Number(req.query.credits);
+        }
+
+        const courses = await db.collection('courses').aggregate([
+            // 2. Apply the filter right at the beginning
+            { $match: matchQuery }, 
+            {
+                $lookup: {
+                    from: "students",
+                    localField: "_id",
+                    foreignField: "courses",
+                    as: "students"
+                }
+            },
+            {
+                $lookup: {
+                    from: "faculty",
+                    localField: "_id",
+                    foreignField: "courses",
+                    as: "faculty"
+                }
+            },
+            // 3. SORT REQUIREMENT
+            { $sort: { createdAt: -1 } } 
+        ]).toArray();
+
         res.json(courses);
     } catch (error) {
         res.status(500).json({ message: error.message });
-    } finally {
-        await session.close();
     }
 };
-
 // Get single course
 const getCourse = async (req, res) => {
-    const session = getDriver().session();
     try {
-        const result = await session.run(
-            `MATCH (c:Course {id: $id})
-             OPTIONAL MATCH (s:Student)-[:ENROLLED_IN]->(c)
-             OPTIONAL MATCH (f:Faculty)-[:TEACHES]->(c)
-             WITH c, collect(DISTINCT s) AS students, collect(DISTINCT f) AS faculty
-             RETURN c, students, faculty`,
-            { id: req.params.id }
-        );
-        if (result.records.length === 0) {
+        const db = getDB();
+        
+        const result = await db.collection('courses').aggregate([
+            { $match: { _id: new ObjectId(req.params.id) } },
+            {
+                $lookup: {
+                    from: "students",
+                    localField: "_id",
+                    foreignField: "courses",
+                    as: "students"
+                }
+            },
+            {
+                $lookup: {
+                    from: "faculty",
+                    localField: "_id",
+                    foreignField: "courses",
+                    as: "faculty"
+                }
+            }
+        ]).toArray();
+        
+        if (result.length === 0) {
             return res.status(404).json({ message: 'Course not found' });
         }
-        res.json(formatCourse(result.records[0]));
+        res.json(result[0]);
     } catch (error) {
         res.status(500).json({ message: error.message });
-    } finally {
-        await session.close();
     }
 };
 
 // Create course
 const createCourse = async (req, res) => {
-    const session = getDriver().session();
     try {
+        const db = getDB();
         const { courseCode, courseName, description, credits } = req.body;
-        const id = uuidv4();
         const now = new Date().toISOString();
 
-        await session.run(
-            `CREATE (c:Course {
-                id: $id,
-                courseCode: $courseCode,
-                courseName: $courseName,
-                description: $description,
-                credits: $credits,
-                createdAt: $now,
-                updatedAt: $now
-            })`,
-            { id, courseCode, courseName, description: description || '', credits: credits ? parseInt(credits) : null, now }
-        );
+        const newCourse = {
+            courseCode,
+            courseName,
+            description,
+            credits: Number(credits),
+            createdAt: now,
+            updatedAt: now
+        };
 
-        const result = await session.run(
-            `MATCH (c:Course {id: $id})
-             OPTIONAL MATCH (s:Student)-[:ENROLLED_IN]->(c)
-             OPTIONAL MATCH (f:Faculty)-[:TEACHES]->(c)
-             WITH c, collect(DISTINCT s) AS students, collect(DISTINCT f) AS faculty
-             RETURN c, students, faculty`,
-            { id }
-        );
-        res.status(201).json(formatCourse(result.records[0]));
+        const result = await db.collection('courses').insertOne(newCourse);
+        const insertedCourse = await db.collection('courses').findOne({ _id: result.insertedId });
+        res.status(201).json(insertedCourse);
     } catch (error) {
         res.status(400).json({ message: error.message });
-    } finally {
-        await session.close();
     }
 };
 
 // Update course
 const updateCourse = async (req, res) => {
-    const session = getDriver().session();
     try {
+        const db = getDB();
         const { courseCode, courseName, description, credits } = req.body;
         const now = new Date().toISOString();
 
-        const updateResult = await session.run(
-            `MATCH (c:Course {id: $id})
-             SET c.courseCode = $courseCode,
-                 c.courseName = $courseName,
-                 c.description = $description,
-                 c.credits = $credits,
-                 c.updatedAt = $now
-             RETURN c`,
-            { id: req.params.id, courseCode, courseName, description: description || '', credits: credits ? parseInt(credits) : null, now }
+        const updateDoc = {
+            $set: {
+                courseCode,
+                courseName,
+                description,
+                credits: Number(credits),
+                updatedAt: now
+            }
+        };
+
+        const result = await db.collection('courses').findOneAndUpdate(
+            { _id: new ObjectId(req.params.id) },
+            updateDoc,
+            { returnDocument: 'after' }
         );
 
-        if (updateResult.records.length === 0) {
+        const docToReturn = result.value || result;
+        if (!docToReturn) {
             return res.status(404).json({ message: 'Course not found' });
         }
-
-        const result = await session.run(
-            `MATCH (c:Course {id: $id})
-             OPTIONAL MATCH (s:Student)-[:ENROLLED_IN]->(c)
-             OPTIONAL MATCH (f:Faculty)-[:TEACHES]->(c)
-             WITH c, collect(DISTINCT s) AS students, collect(DISTINCT f) AS faculty
-             RETURN c, students, faculty`,
-            { id: req.params.id }
-        );
-        res.json(formatCourse(result.records[0]));
+        res.json(docToReturn);
     } catch (error) {
         res.status(400).json({ message: error.message });
-    } finally {
-        await session.close();
     }
 };
 
 // Delete course
 const deleteCourse = async (req, res) => {
-    const session = getDriver().session();
     try {
-        const result = await session.run(
-            'MATCH (c:Course {id: $id}) DETACH DELETE c RETURN count(c) AS deleted',
-            { id: req.params.id }
-        );
-        const deleted = result.records[0].get('deleted').toNumber();
-        if (deleted === 0) {
+        const db = getDB();
+        const result = await db.collection('courses').deleteOne({ _id: new ObjectId(req.params.id) });
+        
+        if (result.deletedCount === 0) {
             return res.status(404).json({ message: 'Course not found' });
         }
         res.json({ message: 'Course deleted successfully' });
     } catch (error) {
         res.status(500).json({ message: error.message });
-    } finally {
-        await session.close();
     }
 };
 

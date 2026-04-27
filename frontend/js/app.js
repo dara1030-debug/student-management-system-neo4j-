@@ -5,16 +5,18 @@ const form = document.getElementById('student-form');
 const formTitle = document.getElementById('form-title');
 const submitBtn = document.getElementById('submit-btn');
 const cancelBtn = document.getElementById('cancel-btn');
-const studentIdInput = document.getElementById('student-id');
-const studentIdFieldInput = document.getElementById('student-id-field');
+const studentIdInput = document.getElementById('student-id'); // Hidden MongoDB _id
+const studentIdFieldInput = document.getElementById('student-id-field'); // Actual School ID
 const nameInput = document.getElementById('name');
 const emailInput = document.getElementById('email');
 const coursesSelect = document.getElementById('courses');
 const tbody = document.getElementById('students-tbody');
 const noStudentsMsg = document.getElementById('no-students');
+const searchInput = document.getElementById('search-input'); // search bar
 
 let isEditing = false;
 let allCourses = [];
+let allStudents = []; //  store all fetched students for  filtering
 
 document.addEventListener('DOMContentLoaded', async () => {
     await fetchCourses();
@@ -23,6 +25,31 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 form.addEventListener('submit', handleSubmit);
 cancelBtn.addEventListener('click', resetForm);
+
+// Add Course search to the live filtering
+if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+        const searchTerm = e.target.value.toLowerCase();
+        
+        const filteredStudents = allStudents.filter(student => {
+            const nameMatch = student.name && student.name.toLowerCase().includes(searchTerm);
+            const idMatch = student.studentId && student.studentId.toLowerCase().includes(searchTerm);
+            const emailMatch = student.email && student.email.toLowerCase().includes(searchTerm);
+            
+            //  Check if any of the enrolled courses match the search term
+            const courseMatch = student.courses && student.courses.some(course => {
+                const codeMatch = course.courseCode && course.courseCode.toLowerCase().includes(searchTerm);
+                const titleMatch = course.courseName && course.courseName.toLowerCase().includes(searchTerm);
+                return codeMatch || titleMatch;
+            });
+            
+            // Return true if ANY of these fields match
+            return nameMatch || idMatch || emailMatch || courseMatch;
+        });
+        
+        renderStudents(filteredStudents);
+    });
+}
 
 async function fetchCourses() {
     try {
@@ -60,8 +87,8 @@ function getSelectedCourses() {
 async function fetchStudents() {
     try {
         const response = await fetch(API_URL);
-        const students = await response.json();
-        renderStudents(students);
+        allStudents = await response.json(); 
+        renderStudents(allStudents);         // Initial render of all data
     } catch (error) {
         console.error('Error fetching students:', error);
     }
@@ -79,14 +106,17 @@ function renderStudents(students) {
 
     students.forEach(student => {
         const row = document.createElement('tr');
-        const courseNames = student.courses && student.courses.length > 0
-            ? student.courses.map(c => escapeHtml(`${c.courseCode} - ${c.courseName}`)).join(', ')
-            : '-';
+        
+        // Transform the courses into HTML Badges!
+        const courseBadges = student.courses && student.courses.length > 0
+            ? student.courses.map(c => `<span class="badge">${escapeHtml(c.courseCode)}</span>`).join('')
+            : '<span style="color: #999; font-size: 0.9em;">None</span>';
+            
         row.innerHTML = `
-            <td>${escapeHtml(student.studentId || '-')}</td>
+            <td><strong>${escapeHtml(student.studentId || '-')}</strong></td>
             <td>${escapeHtml(student.name)}</td>
             <td>${escapeHtml(student.email)}</td>
-            <td>${courseNames}</td>
+            <td>${courseBadges}</td>
            <td>
                 <button class="btn-edit" onclick="editStudent('${student._id}')" title="Edit">
                     <i class="fas fa-edit"></i>
@@ -101,6 +131,7 @@ function renderStudents(students) {
 }
 
 function escapeHtml(text) {
+    if (!text) return '';
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
@@ -133,6 +164,8 @@ async function handleSubmit(e) {
 
         resetForm();
         fetchStudents();
+        // Clear search bar on submit to show full new list
+        if(searchInput) searchInput.value = ''; 
     } catch (error) {
         console.error('Error saving student:', error);
     }
@@ -148,6 +181,7 @@ async function editStudent(id) {
         nameInput.value = student.name;
         emailInput.value = student.email;
 
+        // Extract IDs from the populated course objects
         const courseIds = student.courses ? student.courses.map(c => c._id) : [];
         populateCourseSelect(courseIds);
 
@@ -170,6 +204,8 @@ async function deleteStudent(id) {
     try {
         await fetch(`${API_URL}/${id}`, { method: 'DELETE' });
         fetchStudents();
+        // Clear search bar on delete
+        if(searchInput) searchInput.value = ''; 
     } catch (error) {
         console.error('Error deleting student:', error);
     }

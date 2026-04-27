@@ -4,13 +4,15 @@ const form = document.getElementById('course-form');
 const formTitle = document.getElementById('form-title');
 const submitBtn = document.getElementById('submit-btn');
 const cancelBtn = document.getElementById('cancel-btn');
-const courseIdInput = document.getElementById('course-id');
+const courseIdInput = document.getElementById('course-id'); // Hidden MongoDB _id
 const courseCodeInput = document.getElementById('course-code');
 const courseNameInput = document.getElementById('course-name');
 const descriptionInput = document.getElementById('description');
 const creditsInput = document.getElementById('credits');
 const tbody = document.getElementById('course-tbody');
 const noCoursesMsg = document.getElementById('no-courses');
+const searchInput = document.getElementById('search-input');
+let allCourses = [];
 
 let isEditing = false;
 
@@ -22,11 +24,26 @@ cancelBtn.addEventListener('click', resetForm);
 async function fetchCourses() {
     try {
         const response = await fetch(API_URL);
-        const courses = await response.json();
-        renderCourses(courses);
+        allCourses = await response.json();
+        renderCourses(allCourses);
     } catch (error) {
         console.error('Error fetching courses:', error);
     }
+}
+if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+        const searchTerm = e.target.value.toLowerCase();
+        
+        const filtered = allCourses.filter(course => {
+            const codeMatch = course.courseCode && course.courseCode.toLowerCase().includes(searchTerm);
+            const nameMatch = course.courseName && course.courseName.toLowerCase().includes(searchTerm);
+            const descMatch = course.description && course.description.toLowerCase().includes(searchTerm);
+            
+            return codeMatch || nameMatch || descMatch;
+        });
+        
+        renderCourses(filtered);
+    });
 }
 
 function renderCourses(courses) {
@@ -41,19 +58,23 @@ function renderCourses(courses) {
 
     courses.forEach(course => {
         const row = document.createElement('tr');
-        const studentNames = course.students && course.students.length > 0
-            ? course.students.map(s => escapeHtml(`${s.studentId || 'N/A'} - ${s.name}`)).join(', ')
+        
+        // Transform lists into HTML Badges
+        const studentBadges = course.students && course.students.length > 0
+            ? course.students.map(s => `<span class="badge" style="background: #e3f2fd; color: #1976d2; border-color: #bbdefb;">${escapeHtml(s.name)}</span>`).join('')
             : '-';
-        const facultyNames = course.faculty && course.faculty.length > 0
-            ? course.faculty.map(f => escapeHtml(f.name)).join(', ')
+            
+        const facultyBadges = course.faculty && course.faculty.length > 0
+            ? course.faculty.map(f => `<span class="badge" style="background: #f3e5f5; color: #7b1fa2; border-color: #e1bee7;">${escapeHtml(f.name)}</span>`).join('')
             : '-';
+            
         row.innerHTML = `
-            <td>${escapeHtml(course.courseCode)}</td>
+            <td><strong>${escapeHtml(course.courseCode)}</strong></td>
             <td>${escapeHtml(course.courseName)}</td>
             <td>${escapeHtml(course.description || '-')}</td>
             <td>${course.credits ?? '-'}</td>
-            <td>${studentNames}</td>
-            <td>${facultyNames}</td>
+            <td>${studentBadges}</td>
+            <td>${facultyBadges}</td>
             <td>
                 <button class="btn-edit" onclick="editCourse('${course._id}')" title="Edit">
                     <i class="fas fa-edit"></i>
@@ -68,6 +89,7 @@ function renderCourses(courses) {
 }
 
 function escapeHtml(text) {
+    if (!text) return '';
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
